@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+    <metadata>
+        <id>Jaddie.Database</id>
+        <version>1.0.1</version>
+        <authors>James Dartnell / Jaddie</authors>
+        <licenseUrl>https://raw.githubusercontent.com/jaddie/Jaddie.Database/master/LICENSE</licenseUrl>
+        <requireLicenseAcceptance>true</requireLicenseAcceptance>
+        <description>A database provider which makes accessing a mysql database simple (further support to come)</description>
+        <copyright>James Dartnell / Jaddie</copyright>
+        <dependencies>
+            <dependency id="FluentNHibernate" version="1.4.0.0" />
+        </dependencies>
+    </metadata>
+    <files />
+</package>

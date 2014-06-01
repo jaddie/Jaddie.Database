@@ -50,6 +50,7 @@ namespace Jaddie.Database
 		}
 		public ITransaction Transaction;
 		public Assembly SourceAssembly;
+		public bool ShouldPerformMapping;
 		public Configuration NHibernateConfiguration;
 		public FluentConfiguration FluentNHibernateConfiguration;
 		public delegate void DeleteEntityEventHandler(object sender, EventArgs e);
@@ -68,10 +69,10 @@ namespace Jaddie.Database
 		/// <param name="password">The password for the server connection</param>
 		/// <param name="database">The database on the server which we will be dealing with</param>
 		/// <param name="sourceAssembly">The assembly from which to load the tables, if not set defaults to calling assembly</param>
-		public DatabaseProvider(string server, string username, string password, string database,
-								Assembly sourceAssembly = null)
+		public DatabaseProvider(string server, string username, string password, string database,bool shouldPerformMapping, Assembly sourceAssembly = null)
 		{
 			SourceAssembly = sourceAssembly ?? Assembly.GetCallingAssembly();
+			ShouldPerformMapping = shouldPerformMapping;
 			SessionFactory = CreateSessionFactory(server, username, password, database);
 			Session = SessionFactory.OpenSession();
 			Transaction = Session.BeginTransaction();
@@ -82,12 +83,13 @@ namespace Jaddie.Database
 		/// 
 		/// </summary>
 		/// <param name="connectionString">The connection string for the database server</param>
+		/// <param name="shouldPerformMapping">Should the fluent mappings be generated</param>
 		/// <param name="sourceAssembly">The assembly from which to load the tables, if not set defaults to calling assembly</param>
-		public DatabaseProvider(string connectionString,
-								Assembly sourceAssembly = null)
+		public DatabaseProvider(string connectionString, bool shouldPerformMapping, Assembly sourceAssembly = null)
 		{
 			_connectionString = connectionString;
 			SourceAssembly = sourceAssembly ?? Assembly.GetCallingAssembly();
+			ShouldPerformMapping = shouldPerformMapping;
 			SessionFactory = CreateSessionFactory(connectionString);
 			Session = SessionFactory.OpenSession();
 			Transaction = Session.BeginTransaction();
@@ -105,7 +107,7 @@ namespace Jaddie.Database
 		{
 			var fluconf = Fluently.Configure();
 			//TODO: Support other database connection types (cleanly)
-			var dbconf = MsSqlConfiguration.MsSql2008.ConnectionString(builder =>
+			var dbconf = MySQLConfiguration.Standard.ConnectionString(builder =>
 				{
 					builder.Server(server);
 					builder.Username(username);
@@ -120,7 +122,7 @@ namespace Jaddie.Database
 		{
 			var fluconf = Fluently.Configure();
 			//TODO: Support other database connection types (cleanly)
-			var dbconf = MsSqlConfiguration.MsSql2008.ConnectionString(builder => builder.Is(connectionString));
+			var dbconf = MySQLConfiguration.Standard.ConnectionString(builder => builder.Is(connectionString));
 			fluconf.Database(dbconf);
 			return CreateSessionFactoryWithFluentConfiguration(fluconf);
 		}
@@ -128,11 +130,14 @@ namespace Jaddie.Database
 		private ISessionFactory CreateSessionFactoryWithFluentConfiguration(FluentConfiguration fluentConfiguration)
 		{
 			var storeConfiguration = new StoreConfiguration();
-			fluentConfiguration.Mappings(m =>
+			if (ShouldPerformMapping)
+			{
+				fluentConfiguration.Mappings(m =>
 				{
 					m.FluentMappings.AddFromAssembly(SourceAssembly);
-					m.AutoMappings.Add(AutoMap.Assembly(SourceAssembly, storeConfiguration));
+					//m.AutoMappings.Add(AutoMap.Assembly(SourceAssembly, storeConfiguration));
 				});
+			}
 			FluentNHibernateConfiguration = fluentConfiguration.ExposeConfiguration(configuration =>
 				{
 					NHibernateConfiguration = configuration;
@@ -194,10 +199,11 @@ namespace Jaddie.Database
 		/// Saves the given entity
 		/// </summary>
 		/// <param name="entity"></param>
-		public void Save<T>(T entity)
+		public object Save<T>(T entity)
 		{
-			Session.Save(entity);
+			var saveResult = Session.Save(entity);
 			CommitTransaction();
+			return saveResult;
 		}
 
 		public void Update<T>(T entity)
@@ -257,8 +263,7 @@ namespace Jaddie.Database
 		/// <param name="numberOfResults"></param>
 		/// <param name="orders"></param>
 		/// <returns></returns>
-		public IEnumerable<T> FindAll<T>(DetachedCriteria criteria, int firstResult, int numberOfResults,
-										 params Order[] orders)
+		public IEnumerable<T> FindAll<T>(DetachedCriteria criteria, int firstResult, int numberOfResults, params Order[] orders)
 		{
 			criteria.SetFirstResult(firstResult).SetMaxResults(numberOfResults);
 			return FindAll<T>(criteria, orders);
@@ -304,8 +309,7 @@ namespace Jaddie.Database
 		/// <returns></returns>
 		public T FindFirst<T>(DetachedCriteria criteria)
 		{
-			var results = criteria.SetFirstResult(0).SetMaxResults(1)
-								  .GetExecutableCriteria(Session).List<T>();
+			var results = criteria.SetFirstResult(0).SetMaxResults(1).GetExecutableCriteria(Session).List<T>();
 
 			return results.FirstOrDefault();
 		}
@@ -337,8 +341,7 @@ namespace Jaddie.Database
 		/// <returns></returns>
 		public long Count(DetachedCriteria criteria)
 		{
-			return Convert.ToInt64(criteria.GetExecutableCriteria(Session)
-										   .SetProjection(Projections.RowCountInt64()));
+			return criteria.GetExecutableCriteria(Session).SetProjection(Projections.RowCountInt64()).FutureValue<long>().Value;
 		}
 
 		/// <summary>
@@ -411,7 +414,7 @@ namespace Jaddie.Database
 				Session.Delete(entity);
 				CommitTransaction();
 			}
-			catch (Exception) //TODO: Catch exception and log
+			catch (Exception)
 			{
 				return false;
 			}
